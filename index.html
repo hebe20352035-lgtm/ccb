@@ -170,6 +170,15 @@ td .sub.bad{color:var(--err-fg);font-family:var(--font-body)}
 .tag.mon{background:#fdecea;color:#a1271b;border:1px solid #f1b8b0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:6px;font-size:13px;z-index:20}
 @media (prefers-reduced-motion:no-preference){.toast{transition:opacity .2s}}
+.ac{position:fixed;z-index:60;background:#fff;border:1px solid #c9d1d6;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,0,.14);overflow:auto;-webkit-overflow-scrolling:touch}
+.ac .it{padding:10px 12px;border-bottom:1px solid #eef1f3;cursor:pointer}
+.ac .it:hover,.ac .it.on{background:#eef4f7}
+.ac .l1{font-size:15px;color:#000;line-height:1.35}.ac .l1 .al{font-size:13px;color:#333}.ac .l1 .en{color:#555;font-size:13px}
+.ac .l2{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-top:3px;font-size:12px;color:#666;font-family:'IBM Plex Mono','Noto Sans TC',monospace}
+.ac mark{background:#ffe58f;color:inherit;padding:0}
+.ac .t{font-family:'Noto Sans TC',sans-serif;font-size:11px;padding:1px 7px;border-radius:9px}
+.ac .t.pel{background:#e7eef8;color:#1f4e78}.ac .t.mon{background:#e6f4ea;color:#1e6b3a}
+.ac .more{padding:9px 12px;font-size:12px;color:#666;background:#fafaf9}
 </style>
 
 <div class="wm" aria-hidden="true"></div>
@@ -397,7 +406,7 @@ function libId(c){ const cas=(c.cas||'').trim(); const zh=(c.zh||'').split(/[、
 // 網站資料中同一 CAS 可能對應多個品名，以「CAS|中文名」區分
 const BUILTIN_DUP = (()=>{ const seen=new Set(), dup=new Set(); for(const c of BUILTIN){ if(seen.has(c.cas)) dup.add(c.cas); seen.add(c.cas);} return dup; })();
 let _lib=null, _idx=null;
-function invalidateLib(){ _lib=null; _idx=null; }
+function invalidateLib(){ _lib=null; _idx=null; _acList=null; }
 function library(){
   if(_lib) return _lib;
   const m={};
@@ -463,7 +472,7 @@ function renderRows(){
     tr.innerHTML=`
       <td class="num" data-label="第 ${i+1} 筆">${i+1}</td>
       <td class="c-area" data-label="執行區域" style="min-width:120px"><input id="area-${r.id}" data-k="area" value="${esc(r.area)}" placeholder="執行區域"></td>
-      <td class="c-chem" data-label="化學品" style="min-width:190px"><input id="chem-${r.id}" data-k="chem" list="chemList" value="${esc(r.chem)}" placeholder="名稱或 CAS"><div class="sub" data-c="cas"></div><div class="rowacts"><button class="btn sm ghost" data-a="measures" title="風險減緩/控制措施">措施${r.measures?'＊':''}</button><button class="btn sm ghost" data-a="dup" title="複製此列">複製</button><button class="btn sm ghost" data-a="del" title="刪除此列">刪除</button></div></td>
+      <td class="c-chem" data-label="化學品" style="min-width:190px"><input id="chem-${r.id}" data-k="chem" value="${esc(r.chem)}" placeholder="名稱或 CAS（打一個字就會列出）" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="done"><div class="sub" data-c="cas"></div><div class="rowacts"><button class="btn sm ghost" data-a="measures" title="風險減緩/控制措施">措施${r.measures?'＊':''}</button><button class="btn sm ghost" data-a="dup" title="複製此列">複製</button><button class="btn sm ghost" data-a="del" title="刪除此列">刪除</button></div></td>
       <td data-c="grp" class="grp c-grp" data-label="危害群組"></td>
       <td class="c-state" data-label="物理狀態" style="min-width:86px"><select id="state-${r.id}" data-k="state">${opts(['固體','液體','氣體'],r.state)}</select></td>
       <td class="c-disp" data-label="散布狀況" style="min-width:150px"><select id="disp-${r.id}" data-k="disp">${opts(['低','中','高'],r.disp,DISP_HINT[r.state])}</select></td>
@@ -551,16 +560,75 @@ function renderLib(){
     <td class="grp">${esc(groupText(c))}</td><td class="src">${esc(c.src|| (c.builtin?'內建':''))}</td>
     <td style="white-space:nowrap"><button class="btn sm ghost" data-a="edit">編輯</button>${c.builtin&&!dbLib[k]&&!localLib[k]?'':'<button class="btn sm ghost" data-a="libdel">刪除</button>'}</td></tr>`).join('')
     : '<tr><td colspan="6" class="hint" style="padding:16px">查無符合的化學品。</td></tr>';
-  const dl=$('chemList')||document.body.appendChild(Object.assign(document.createElement('datalist'),{id:'chemList'}));
-  if(dl.dataset.n!==String(all.length)){ dl.dataset.n=String(all.length);
-    dl.innerHTML=all.filter(([k,c])=>c.zh).map(([k,c])=>`<option value="${esc(c.zh.split(/[、;；]/)[0])}">${esc(c.cas)}</option>`).join(''); }
 }
+
+/* ===================== 化學品即時搜尋（打字即列出含該字的化學品） ===================== */
+const AC_MAX=40;
+var acEl=null, acInput=null, acItems=[], acSel=-1, _acList=null;
+function acList(){ if(_acList) return _acList;
+  return _acList=Object.values(library()).filter(c=>c.zh||c.en||c.cas).map(c=>({c,zh:splitNames(c.zh),en:splitNames(c.en),cas:norm(c.cas),z0:String(c.zh||'').split(/[、;；]/)[0].trim()})); }
+function acSearch(q){
+  q=norm(q); if(!q) return {list:[],total:0};
+  const qc=q.replace(/\s/g,''); const out=[];
+  for(const it of acList()){
+    let sc=99, alias='';
+    it.zh.forEach((n,j)=>{ const p=j===0?0:1; let v=99;
+      if(n===q) v=0+p; else if(n.startsWith(q)) v=2+p; else if(n.includes(q)) v=5+p;
+      if(v<sc){ sc=v; alias=j===0?'':n; } });
+    if(it.cas){ let v=99; if(it.cas===qc) v=0; else if(it.cas.startsWith(qc)) v=2; else if(it.cas.includes(qc)) v=6; if(v<sc){ sc=v; alias=''; } }
+    if(sc>4) for(const n of it.en){ let v=99; if(n===q) v=1; else if(n.startsWith(q)) v=4; else if(n.includes(q)) v=7; if(v<sc){ sc=v; alias=''; } }
+    if(sc<99) out.push([sc,{...it,alias}]);
+  }
+  out.sort((a,b)=>a[0]-b[0] || a[1].z0.length-b[1].z0.length || a[1].z0.localeCompare(b[1].z0,'zh-Hant'));
+  return {list:out.slice(0,AC_MAX).map(x=>x[1]), total:out.length};
+}
+function acMark(text,q){ const t=String(text||''), i=t.toLowerCase().indexOf(q); return i<0?esc(t):esc(t.slice(0,i))+'<mark>'+esc(t.slice(i,i+q.length))+'</mark>'+esc(t.slice(i+q.length)); }
+function acPlace(){
+  if(!acEl||!acInput) return;
+  const r=acInput.getBoundingClientRect(), vv=window.visualViewport, vh=vv?vv.height:innerHeight, vw=document.documentElement.clientWidth;
+  const w=Math.min(Math.max(r.width,340),vw-16), left=Math.min(Math.max(8,r.left),vw-w-8);
+  const below=vh-r.bottom-8, above=r.top-8, useAbove=below<180 && above>below;
+  acEl.style.left=left+'px'; acEl.style.width=w+'px';
+  if(useAbove){ acEl.style.top=''; acEl.style.bottom=(innerHeight-r.top+4)+'px'; acEl.style.maxHeight=Math.max(140,above)+'px'; }
+  else { acEl.style.bottom=''; acEl.style.top=(r.bottom+4)+'px'; acEl.style.maxHeight=Math.max(140,below)+'px'; }
+}
+function acShow(input){
+  acInput=input; const q=norm(input.value);
+  if(!q){ acHide(); return; }
+  const {list,total}=acSearch(q); acItems=list; acSel=-1;
+  if(!acEl){ acEl=document.createElement('div'); acEl.className='ac'; acEl.setAttribute('role','listbox'); document.body.appendChild(acEl);
+    acEl.addEventListener('mousedown',e=>e.preventDefault());
+    acEl.addEventListener('click',e=>{ const li=e.target.closest('[data-i]'); if(li) acPick(+li.dataset.i); }); }
+  acEl.innerHTML = list.length ? list.map((it,i)=>{ const c=it.c, g=REG[c.cas];
+      const tags=(g&&g[0]?'<span class="t pel">容許標準</span>':'')+(g&&g[1]?'<span class="t mon">監測</span>':'');
+      return `<div class="it" data-i="${i}" role="option"><div class="l1"><b>${acMark(it.z0,q)}</b>${it.alias?` <span class="al">（別名：${acMark(it.alias,q)}）</span>`:''} <span class="en">${acMark(String(c.en||'').split('、')[0],q)}</span></div>
+        <div class="l2"><span>CAS ${acMark(c.cas,q.replace(/\s/g,''))}</span><span>群組 ${esc(groupText(c))}</span>${tags}</div></div>`; }).join('')
+      + (total>list.length?`<div class="more">共 ${total} 筆，只列前 ${list.length} 筆，再多打幾個字可縮小範圍</div>`:'')
+    : '<div class="more">查無含「'+esc(input.value.trim())+'」的化學品，可改用 CAS 或英文名稱查詢</div>';
+  acEl.hidden=false; acPlace();
+}
+function acHide(){ if(acEl) acEl.hidden=true; acSel=-1; }
+function acPick(i){ const it=acItems[i]; if(!it||!acInput) return;
+  acInput.value=it.z0||it.c.cas; acInput.dispatchEvent(new Event('input',{bubbles:true})); acHide(); acInput.blur(); }
+function acKey(e){
+  if(!acEl||acEl.hidden) return;
+  const els=[...acEl.querySelectorAll('.it')]; if(!els.length) return;
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){ e.preventDefault(); acSel=(acSel+(e.key==='ArrowDown'?1:-1)+els.length)%els.length;
+    els.forEach((x,i)=>x.classList.toggle('on',i===acSel)); els[acSel].scrollIntoView({block:'nearest'}); }
+  else if(e.key==='Enter'){ e.preventDefault(); acPick(acSel<0?0:acSel); }
+  else if(e.key==='Escape'){ acHide(); }
+}
+$('rowsBody').addEventListener('focusin',e=>{ if(e.target.dataset?.k==='chem') acShow(e.target); });
+$('rowsBody').addEventListener('focusout',e=>{ if(e.target.dataset?.k==='chem') setTimeout(()=>{ if(document.activeElement!==acInput) acHide(); },150); });
+$('rowsBody').addEventListener('keydown',e=>{ if(e.target.dataset?.k==='chem') acKey(e); });
+addEventListener('resize',acPlace); addEventListener('scroll',acPlace,true); window.visualViewport&&visualViewport.addEventListener('resize',acPlace);
 
 /* ===================== 事件：清單 ===================== */
 $('rowsBody').addEventListener('input',ev=>{
   const el=ev.target, k=el.dataset.k; if(!k) return;
   const id=el.closest('tr').dataset.id, r=draft.rows.find(x=>x.id===id); if(!r) return;
   r[k]=el.value; r.example=false;
+  if(k==='chem' && document.activeElement===el) acShow(el);
   if(k==='state'){
     if(el.value==='氣體'){ r.disp='高'; r.qty='大'; }
     renderRows(); document.getElementById('state-'+id)?.focus();
