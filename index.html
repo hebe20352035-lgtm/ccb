@@ -143,10 +143,12 @@ td .sub.bad{color:var(--err-fg);font-family:var(--font-body)}
 .dialog{position:fixed;inset:0;background:rgba(10,16,20,.45);display:grid;place-items:center;padding:16px;z-index:10}
 .dialog .panel{background:var(--surface);width:min(720px,100%);max-height:90%;overflow:auto}
 /* 封面 */
-.cover{position:fixed;inset:0;z-index:30;background:#fafaf9;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));overflow:auto}
+.cover{position:fixed;inset:0;z-index:30;background:#fafaf9;color:#000;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;gap:18px;padding:calc(24px + env(safe-area-inset-top,0px)) 16px calc(24px + env(safe-area-inset-bottom,0px));overflow:auto}
 .cover img{width:min(320px,70vw);max-height:56vh;object-fit:contain}
 .cover .ct{font-size:20px;font-weight:700;letter-spacing:.06em;color:#000;text-align:center}
 .cover .cs{font-size:13px;color:#333;text-align:center;max-width:34em}
+.cover>:first-child{margin-top:auto}.cover>:last-child{margin-bottom:auto}
+.cover .src{text-align:left;line-height:1.6}.cover .src b{display:block;text-align:center;margin-bottom:2px}.cover .src a{color:#1f4e78;word-break:break-all}
 .cover .go{appearance:none;border:0;background:#5a7584;color:#fff;font:inherit;font-weight:500;font-size:15px;padding:10px 34px;border-radius:999px;cursor:pointer}
 .cover .go:hover{background:#4b6573}
 .cover .go:focus-visible{outline:2px solid #5a7584;outline-offset:3px}
@@ -176,7 +178,8 @@ td .sub.bad{color:var(--err-fg);font-family:var(--font-body)}
   <div class="ct">CCB 批次評估</div>
   <div class="cs">危害性化學品評估及分級管理｜一次評估整廠化學品，輸出格式同職安署 CCB 網站執行紀錄</div>
   <button class="go" id="coverGo">開始使用</button>
-  <div class="cs" style="font-size:12px">危害群組資料來源：職安署 CCB 網站（內建危害群組劃分建議），擷取日期 2026/10/10<br>製作：黃²小編｜安平技術顧問有限公司</div>
+  <div class="cs src" id="coverSrc" style="font-size:12px"></div>
+  <div class="cs" style="font-size:12px">製作：黃²小編｜安平技術顧問有限公司</div>
 </div>
 
 <div class="wrap">
@@ -353,7 +356,15 @@ const BUILTIN = (()=>{ try{ return JSON.parse(document.getElementById('ccbdb').t
 
 /* ===================== 法規標示（勞工作業場所容許暴露標準 114.04.11；勞工作業環境監測實施辦法 115.06.12 第6條附表一、二） ===================== */
 const REG=(()=>{ try{ return JSON.parse(document.getElementById('regdb').textContent); }catch(e){ return {}; } })();
-const REG_SRC='容許暴露標準：勞工作業場所容許暴露標準附表一（114.04.11 修正）；監測項目：勞工作業環境監測實施辦法第6條附表一、附表二（115.06.12 修正）';
+const REG_SRC='容許暴露標準：勞工作業場所容許暴露標準附表一（114.04.11 修正）；監測項目：勞工作業環境監測實施辦法第6條附表一、附表二（115.06.12 修正）；鉛作業：鉛中毒預防規則第2、3條（113.06.13 修正）';
+// 本程式使用之全部資料來源（畫面封面、Excel 各表頭、閱讀說明共用）
+const SOURCES=[
+  ['職安署 危害性化學品評估及分級管理（CCB）網站：危害群組、半定量評估方法（資料擷取 2026/10/10）','https://ccb.osha.gov.tw/'],
+  ['勞工作業場所容許暴露標準（114.04.11 修正）附表一','https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=N0060004'],
+  ['勞工作業環境監測實施辦法（115.06.12 修正）第6、7條及附表一、附表二','https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=N0060033'],
+  ['勞工作業環境監測實施辦法 法規沿革（第33條延後施行項目）','https://law.moj.gov.tw/LawClass/LawHistory.aspx?pcode=N0060033'],
+  ['鉛中毒預防規則（113.06.13 修正）第2、3條','https://law.moj.gov.tw/LawClass/LawAll.aspx?pcode=N0060018']];
+const SRC_TEXT=SOURCES.map((x,i)=>`(${i+1}) ${x[0]}　${x[1]}`).join('；');
 function regOf(c){ if(!c||!c.cas) return null; const v=REG[c.cas]; if(!v) return {pel:'',mon:'',monC:0,pelC:0}; return {pel:v[0]||'',mon:v[1]||'',monC:v[2]||0,pelC:v[3]||0}; }
 function regBadges(c){ const g=regOf(c); if(!g) return ''; let s='';
   if(g.pel) s+=`<span class="tag pel" title="${esc(g.pel)}">有容許暴露標準${g.pelC?'（請確認）':''}</span>`;
@@ -770,7 +781,7 @@ const XSTYLES=(()=>{
   const borders=['<border><left/><right/><top/><bottom/><diagonal/></border>',`<border>${side('left')}${side('right')}${side('top')}${side('bottom')}<diagonal/></border>`];
   const xf=(f,fi,b,al)=>`<xf numFmtId="0" fontId="${f}" fillId="${fi}" borderId="${b}" xfId="0"${f?' applyFont="1"':''}${fi?' applyFill="1"':''}${b?' applyBorder="1"':''}${al?` applyAlignment="1"><alignment ${al}/></xf>`:'/>'}`;
   const L='horizontal="left" vertical="center" wrapText="1"', C='horizontal="center" vertical="center" wrapText="1"';
-  const xfs=[xf(0,0,0),xf(1,0,0,'vertical="center"'),xf(2,0,0,'vertical="center"'),xf(3,0,0,'vertical="center"'),xf(4,2,1,C),xf(5,3,1,L),xf(5,4,1,L),xf(5,3,1,C),xf(5,4,1,C),xf(4,5,1,C),xf(4,6,1,C),xf(4,7,1,C),xf(4,8,1,C),xf(6,9,1,L),xf(5,3,1,L)];
+  const xfs=[xf(0,0,0),xf(1,0,0,'vertical="center"'),xf(2,0,0,'vertical="center"'),xf(3,0,0,'vertical="center" wrapText="1"'),xf(4,2,1,C),xf(5,3,1,L),xf(5,4,1,L),xf(5,3,1,C),xf(5,4,1,C),xf(4,5,1,C),xf(4,6,1,C),xf(4,7,1,C),xf(4,8,1,C),xf(6,9,1,L),xf(5,3,1,L)];
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><fonts count="${fonts.length}">${fonts.join('')}</fonts><fills count="${fills.length}">${fills.join('')}</fills><borders count="${borders.length}">${borders.join('')}</borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs><cellXfs count="${xfs.length}">${xfs.join('')}</cellXfs><cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>`;
 })();
 // sheets: [{name, cols, rows, heights, merges, freeze, filter, printTitleRow, landscape}]
@@ -796,14 +807,15 @@ async function buildXlsx(sheets){
 function makeSheet({name,title,info,note,cols,head,data,center,riskCol,landscape}){
   const nc=cols.length, last=colName(nc-1);
   const rows=[[{v:title,s:XS.title}],[{v:info,s:XS.sub}],[{v:note,s:XS.note}],head.map(h=>({v:h,s:XS.head}))];
-  const heights={1:30,2:20,3:18,4:30};
+  const heights={1:30,2:20,3:noteHeight(note||'',cols),4:30};
   data.forEach((r,i)=>{ const alt=i%2===1;
     const cells=r.map((v,j)=>{ if(j===riskCol && XS['r'+v]) return {v:v,s:XS['r'+v]}; return {v:(v===undefined?'':v), s: center&&center.includes(j)?(alt?XS.ctrAlt:XS.ctr):(alt?XS.bodyAlt:XS.body)}; });
     rows.push(cells); heights[rows.length]=rowHeight(cells,cols,22); });
   const end=Math.max(5,rows.length);
   return {name,cols,rows,heights,landscape,merges:[`A1:${last}1`,`A2:${last}2`,`A3:${last}3`],freeze:4,filter:`A4:${last}${end}`,printTitleRow:4};
 }
-const SRC_NOTE='危害群組資料來源：職安署 CCB 網站（內建危害群組劃分建議），擷取日期 2026/10/10｜製作：黃²小編';
+const SRC_NOTE='資料來源：'+SRC_TEXT+'｜製作：黃²小編';
+const noteHeight=(t,cols)=>Math.max(18,estLines(t,cols.reduce((a,b)=>a+b,0))*14+6);
 
 // 依執行區域分組的分級管理清單
 function groupedSheet(recs,info){
@@ -811,7 +823,7 @@ function groupedSheet(recs,info){
   const head=['序號','執行區域','中文名稱','英文名稱','CAS No.','物理狀態','危害群組','散布狀況','使用量','風險等級','管理方法','容許暴露標準','應實施作業環境監測','暴露控制表單','風險減緩/控制措施'];
   const center=[0,4,5,6,7,8,10];
   const rows=[[{v:'危害性化學品分級管理清單',s:XS.title}],[{v:info,s:XS.sub}],[{v:SRC_NOTE,s:XS.note}]];
-  const heights={1:30,2:20,3:18}; const merges=[`A1:${last}1`,`A2:${last}2`,`A3:${last}3`];
+  const heights={1:30,2:20,3:noteHeight(SRC_NOTE,cols)}; const merges=[`A1:${last}1`,`A2:${last}2`,`A3:${last}3`];
   // 第 4 列：顏色圖例
   const lg=[{v:'顏色說明',s:XS.label},{v:'',s:XS.label},{v:'1 綠色＝風險低\n（整體換氣）',s:XS.r1},{v:'2 黃色＝風險中（工程控制）',s:XS.r2},{v:'3 橘色＝風險中高（隔離）',s:XS.r3},{v:'',s:XS.r3},{v:'',s:XS.r3},{v:'4 紅色＝風險高（特殊規定）',s:XS.r4},{v:'',s:XS.r4},{v:'',s:XS.r4},{v:'',s:XS.r4},{v:'各欄位與代碼的意思，請看「閱讀說明」工作表',s:XS.labelV},{v:'',s:XS.labelV},{v:'',s:XS.labelV},{v:'',s:XS.labelV}];
   rows.push(lg); heights[4]=36; merges.push('A4:B4','E4:G4','H4:K4','L4:O4');
@@ -839,7 +851,7 @@ function officialSheet(recs,info){
   const rows=[], heights={}, merges=[]; const last=colName(cols.length-1);
   rows.push([{v:'具有健康危害之化學品分級管理清單（官方格式）',s:XS.title}]); heights[1]=30; merges.push(`A1:${last}1`);
   rows.push([{v:info,s:XS.sub}]); heights[2]=20; merges.push(`A2:${last}2`);
-  rows.push([{v:'格式參考：危害性化學品評估及分級管理技術指引附表一。「危害分類」欄以 CCB 危害群組表示；GHS 危害分類請參考各化學品 SDS 第二項。「使用量」為 CCB 級距（小／中／大）。',s:XS.note}]); heights[3]=18; merges.push(`A3:${last}3`);
+  rows.push([{v:'格式參考：危害性化學品評估及分級管理技術指引附表一。「危害分類」欄以 CCB 危害群組表示；GHS 危害分類請參考各化學品 SDS 第二項。「使用量」為 CCB 級距（小／中／大）。'+SRC_NOTE,s:XS.note}]); heights[3]=noteHeight('格式參考：危害性化學品評估及分級管理技術指引附表一。「危害分類」欄以 CCB 危害群組表示；GHS 危害分類請參考各化學品 SDS 第二項。「使用量」為 CCB 級距（小／中／大）。'+SRC_NOTE,cols); merges.push(`A3:${last}3`);
   const H=s=>({v:s,s:XS.head});
   rows.push([H('化學品名稱'),H(''),H(''),H('危害分類'),H('暴露情形'),H(''),H(''),H('是否訂有容許暴露標準？'),H('是否應實施作業環境監測？'),H('風險等級'),H('評估方法')]);
   rows.push([H('中文'),H('英文'),H('CAS No.'),H(''),H('作業場所名稱'),H('勞工人數'),H('使用量'),H(''),H(''),H(''),H('')]);
@@ -879,7 +891,7 @@ function guideSheet(info){
 
   sec('三、欄位說明');
   hdr('欄位','可能的值','代表意思','');
-  row('危害群組','A、B、C、D、E','化學品本身「吸入」對健康的危害程度。A 最低，E 最高（E 通常為致癌、致突變或呼吸道過敏物質）。','資料來源：職安署 CCB 網站內建危害群組。');
+  row('危害群組','A、B、C、D、E','化學品本身「吸入」對健康的危害程度。A 最低，E 最高（E 通常為致癌、致突變或呼吸道過敏物質）。','資料來源：職安署 CCB 網站內建危害群組（https://ccb.osha.gov.tw/）。');
   row('危害群組','S','表示這種化學品接觸到皮膚或眼睛也會造成傷害。','有 S 時，要注意手套、護目鏡等防護（見 SK100）。');
   row('物理狀態','固體／液體／氣體','化學品在使用時的型態。','');
   row('散布狀況','低／中／高','化學品容易散到空氣中的程度。固體看粉塵多寡，液體看沸點（沸點越低越容易揮發）。','液體：沸點 >150℃ 為低、50～150℃ 為中、<50℃ 為高；氣體一律視為高。');
@@ -907,7 +919,7 @@ function guideSheet(info){
   const notes=['本報告為 CCB 半定量評估結果，僅供參考，使用者應自行負責因使用本結果可能造成的所有後果。',
     '具有容許暴露標準或依法應實施作業環境監測的化學品，CCB 結果不能取代作業環境監測，請依相關法規辦理（適用條件請確認最新法規）。',
     '依勞工作業環境監測實施辦法第7條，臨時性作業、作業時間短暫、作業期間短暫，或化學品僅作貯存用途且經評估不致暴露者，得不實施監測；有機溶劑、特定化學物質是否屬法定作業場所，另依有機溶劑中毒預防規則、特定化學物質危害預防標準認定。',
-    '法規標示資料來源：'+REG_SRC+'。法規如有修正，以最新公告為準。',
+    '法規標示依據：'+REG_SRC+'。法規如有修正，以最新公告為準。',
     '製程、使用量或化學品有變更時，應重新評估；建議至少每 3 年定期重新評估一次。',
     SRC_NOTE];
   notes.forEach((s,i)=>{const cells=[{v:`${i+1}. ${s}`,s:XS.body},{v:'',s:XS.body},{v:'',s:XS.body},{v:'',s:XS.body}]; rows.push(cells); heights[rows.length]=rowHeight([{v:s}],[130],22); merges.push(`A${rows.length}:${last}${rows.length}`);});
@@ -996,6 +1008,7 @@ function applyOwner(o){ IS_OWNER=!!o; $('tab-lib').hidden=!IS_OWNER; if(!IS_OWNE
 
 $('contactBox').innerHTML=contactHTML(false);
 /* ===================== 封面 ===================== */
+$('coverSrc').innerHTML='<b>資料來源</b>'+SOURCES.map((x,i)=>`${i+1}. ${esc(x[0])}<br><a href="${x[1]}" target="_blank" rel="noopener">${x[1]}</a>`).join('<br>');
 $('coverGo').onclick=()=>{ const c=$('cover'); c.classList.add('leaving'); setTimeout(()=>{c.hidden=true;c.classList.remove('leaving');},250); };
 $('brandLogo').onclick=()=>{ $('cover').hidden=false; $('coverGo').focus(); };
 
