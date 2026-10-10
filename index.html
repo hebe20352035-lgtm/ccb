@@ -72,6 +72,27 @@ h2{font-size:15px;margin:0;font-weight:700}
 label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted);min-width:0}
 input,select,textarea{font:inherit;color:var(--fg);background:var(--cell);border:1px solid var(--line);border-radius:6px;padding:7px 9px;min-width:0;width:100%}
 textarea{resize:vertical}
+input[type=date]{-webkit-appearance:none;appearance:none;display:block;max-width:100%;min-height:38px;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left}
+.grid4 > *{min-width:0}
+@media (max-width:760px){
+  .tablebox:has(table.cards){overflow:visible;border:0;background:transparent}
+  table.rows.cards{min-width:0;display:block}
+  table.rows.cards thead{display:none}
+  table.rows.cards tbody{display:flex;flex-direction:column;gap:10px}
+  table.rows.cards tr{display:grid;grid-template-columns:1fr 1fr;gap:10px 12px;padding:12px;border:1px solid var(--line);border-radius:8px;background:var(--cell)}
+  table.rows.cards tr.sel{background:var(--accent-soft);border-color:var(--accent)}
+  table.rows.cards td{display:flex;flex-direction:column;gap:4px;padding:0;border:0;background:transparent;min-width:0!important;width:auto}
+  table.rows.cards td::before{content:attr(data-label);font-size:12px;color:var(--muted)}
+  table.rows.cards td.num{grid-column:1/-1;text-align:left;font-size:0;width:auto}
+  table.rows.cards td.num::before{font-size:13px;font-weight:700;color:var(--fg);font-family:var(--font-body)}
+  table.rows.cards td.c-chem,table.rows.cards td.c-disp,table.rows.cards td.c-risk{grid-column:1/-1}
+  table.rows.cards td .sub{max-width:none;white-space:normal}
+  table.rows.cards td.c-act{grid-column:1/-1;flex-direction:row;justify-content:flex-end;white-space:normal}
+  table.rows.cards td.c-act::before{content:none}
+  table.rows.cards tr.rowmeasures{display:block}
+  table.rows.cards tr.rowmeasures td:first-child{display:none}
+}
 input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .btn{appearance:none;font:inherit;font-size:13.5px;font-weight:500;border:1px solid var(--line);background:var(--cell);color:var(--fg);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--surface-2)}
@@ -104,12 +125,12 @@ td .sub.bad{color:var(--err-fg);font-family:var(--font-body)}
 .hint{font-size:12.5px;color:var(--muted)}
 .mono{font-family:var(--font-mono)}
 /* 執行紀錄預覽：比照網站輸出 */
-.recbox{overflow-x:auto}
-.record{max-width:640px;margin:0 auto;background:#fff;color:#111;padding:22px 26px;border:1px solid var(--line);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;font-size:13px}
-.record h3{text-align:center;font-size:17px;margin:0 0 10px}
-.record table{border-collapse:collapse;width:100%}
+.recbox{overflow:hidden}
+.record{width:640px;box-sizing:border-box;margin:0 auto;background:#fff;color:#111;padding:22px 26px;border:1px solid var(--line);font-family:"Microsoft JhengHei","Noto Sans TC",sans-serif;font-size:13px}
+.record h3{text-align:center;font-size:17px;margin:0 0 10px;white-space:nowrap}
+.record table{border-collapse:collapse;width:100%;table-layout:fixed}
 .record td{border:1px solid #000;padding:6px 8px;vertical-align:middle}
-.record td.k{width:32%}
+.record td.k{white-space:nowrap}
 .record tr.tall td{height:78px}
 .lib-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;align-items:end}
 .grpsel{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -179,7 +200,7 @@ td .sub.bad{color:var(--err-fg);font-family:var(--font-body)}
       </div>
       <div class="hint">化學品欄可輸入中文名稱、英文名稱或 CAS No.；危害群組由化學品庫帶出。散布狀況：固體看粉塵度，液體看揮發度（製程溫度高於室溫時依手冊圖 1 判定）。</div>
       <div class="tablebox">
-        <table class="rows">
+        <table class="rows cards" id="rowsTable">
           <thead><tr>
             <th>#</th><th>執行區域</th><th>化學品</th><th>危害群組</th><th>物理狀態</th><th>散布狀況</th><th>使用量</th><th>風險等級／管理方法</th><th></th>
           </tr></thead>
@@ -394,15 +415,15 @@ function renderRows(){
   draft.rows.forEach((r,i)=>{
     const tr=document.createElement('tr'); tr.dataset.id=r.id; if(r.id===selId) tr.className='sel';
     tr.innerHTML=`
-      <td class="num">${i+1}</td>
-      <td style="min-width:120px"><input id="area-${r.id}" data-k="area" value="${esc(r.area)}" placeholder="執行區域"></td>
-      <td style="min-width:190px"><input id="chem-${r.id}" data-k="chem" list="chemList" value="${esc(r.chem)}" placeholder="名稱或 CAS"><div class="sub" data-c="cas"></div></td>
-      <td data-c="grp" class="grp"></td>
-      <td style="min-width:86px"><select id="state-${r.id}" data-k="state">${opts(['固體','液體','氣體'],r.state)}</select></td>
-      <td style="min-width:150px"><select id="disp-${r.id}" data-k="disp">${opts(['低','中','高'],r.disp,DISP_HINT[r.state])}</select></td>
-      <td style="min-width:120px"><select id="qty-${r.id}" data-k="qty">${opts(['小','中','大'],r.qty,QTY_HINT[r.state])}</select></td>
-      <td data-c="risk"></td>
-      <td style="white-space:nowrap">
+      <td class="num" data-label="第 ${i+1} 筆">${i+1}</td>
+      <td class="c-area" data-label="執行區域" style="min-width:120px"><input id="area-${r.id}" data-k="area" value="${esc(r.area)}" placeholder="執行區域"></td>
+      <td class="c-chem" data-label="化學品" style="min-width:190px"><input id="chem-${r.id}" data-k="chem" list="chemList" value="${esc(r.chem)}" placeholder="名稱或 CAS"><div class="sub" data-c="cas"></div></td>
+      <td data-c="grp" class="grp c-grp" data-label="危害群組"></td>
+      <td class="c-state" data-label="物理狀態" style="min-width:86px"><select id="state-${r.id}" data-k="state">${opts(['固體','液體','氣體'],r.state)}</select></td>
+      <td class="c-disp" data-label="散布狀況" style="min-width:150px"><select id="disp-${r.id}" data-k="disp">${opts(['低','中','高'],r.disp,DISP_HINT[r.state])}</select></td>
+      <td class="c-qty" data-label="使用量" style="min-width:120px"><select id="qty-${r.id}" data-k="qty">${opts(['小','中','大'],r.qty,QTY_HINT[r.state])}</select></td>
+      <td data-c="risk" class="c-risk" data-label="風險等級／管理方法"></td>
+      <td class="c-act" style="white-space:nowrap">
         <button class="btn sm ghost" data-a="measures" title="風險減緩/控制措施">措施${r.measures?'＊':''}</button>
         <button class="btn sm ghost" data-a="dup" title="複製此列">複製</button>
         <button class="btn sm ghost" data-a="del" title="刪除此列">刪除</button>
@@ -455,10 +476,19 @@ function renderPreview(){
   const r=draft.rows.find(x=>x.id===selId)||draft.rows[0];
   if(!r){ $('preview').innerHTML='<div class="hint">清單是空的。新增化學品後，這裡會顯示執行紀錄預覽。</div>'; return; }
   const d=recordData(r);
-  $('preview').innerHTML=`<div class="record"><h3>${TITLE}</h3><table>${REC_FIELDS.map(([k,f])=>`<tr class="${f==='measures'?'tall':''}"><td class="k">${k}</td><td colspan="3">${esc(d[f])}</td></tr>`).join('')}
+  $('preview').innerHTML=`<div class="record"><h3>${TITLE}</h3><table><colgroup><col style="width:31.8%"><col style="width:25.4%"><col style="width:13.6%"><col style="width:29.2%"></colgroup>${REC_FIELDS.map(([k,f])=>`<tr class="${f==='measures'?'tall':''}"><td class="k">${k}</td><td colspan="3">${esc(d[f])}</td></tr>`).join('')}
     <tr><td class="k">製表者</td><td>${esc(d.maker)}</td><td style="white-space:nowrap">製表日期</td><td>${esc(d.makedate)}</td></tr>
     <tr><td colspan="4">${DISCLAIMER}</td></tr></table></div>`;
+  fitRecord();
 }
+// 預覽依 A4 紙寬排版，螢幕較窄時等比例縮小，版面與輸出的 Word 一致
+function fitRecord(){
+  const box=$('preview'), rec=box.querySelector('.record'); if(!rec) return;
+  rec.style.transform=''; rec.style.margin='0 auto'; box.style.height='';
+  const s=Math.min(1, box.clientWidth/rec.offsetWidth);
+  if(s<1){ rec.style.transformOrigin='top left'; rec.style.margin='0'; rec.style.transform=`scale(${s})`; box.style.height=Math.ceil(rec.offsetHeight*s)+'px'; }
+}
+window.addEventListener('resize',()=>fitRecord());
 
 /* ===================== 繪製：化學品庫 ===================== */
 function renderLib(){
