@@ -711,6 +711,90 @@ function makeSheet({name,title,info,note,cols,head,data,center,riskCol,landscape
 }
 const SRC_NOTE='危害群組資料來源：職安署 CCB 網站（內建危害群組劃分建議），擷取日期 2026/10/10｜製作：黃²小編';
 
+// 依執行區域分組的分級管理清單
+function groupedSheet(recs,info){
+  const cols=[7,13,18,30,13,11,11,11,10,11,12,36,26], nc=cols.length, last=colName(nc-1);
+  const head=['序號','執行區域','中文名稱','英文名稱','CAS No.','物理狀態','危害群組','散布狀況','使用量','風險等級','管理方法','暴露控制表單','風險減緩/控制措施'];
+  const center=[0,4,5,6,7,8,10];
+  const rows=[[{v:'危害性化學品分級管理清單',s:XS.title}],[{v:info,s:XS.sub}],[{v:SRC_NOTE,s:XS.note}]];
+  const heights={1:30,2:20,3:18}; const merges=[`A1:${last}1`,`A2:${last}2`,`A3:${last}3`];
+  // 第 4 列：顏色圖例
+  const lg=[{v:'顏色說明',s:XS.label},{v:'',s:XS.label},{v:'1 綠色＝風險低\n（整體換氣）',s:XS.r1},{v:'2 黃色＝風險中（工程控制）',s:XS.r2},{v:'3 橘色＝風險中高（隔離）',s:XS.r3},{v:'',s:XS.r3},{v:'',s:XS.r3},{v:'4 紅色＝風險高（特殊規定）',s:XS.r4},{v:'',s:XS.r4},{v:'',s:XS.r4},{v:'',s:XS.r4},{v:'各欄位與代碼的意思，請看「閱讀說明」工作表',s:XS.labelV},{v:'',s:XS.labelV}];
+  rows.push(lg); heights[4]=36; merges.push('A4:B4','E4:G4','H4:K4','L4:M4');
+  rows.push(head.map(h=>({v:h,s:XS.head}))); heights[5]=32;
+  // 依區域分組（保留輸入順序）
+  const order=[], groups={};
+  recs.forEach(d=>{const a=d.area||'（未填區域）'; if(!groups[a]){groups[a]=[];order.push(a);} groups[a].push(d);});
+  let n=0;
+  order.forEach(a=>{
+    const l=groups[a], mx=Math.max(...l.map(d=>d.level||0));
+    const r=rows.length+1;
+    rows.push([{v:`■ 執行區域：${a}　　共 ${l.length} 種化學品　　本區最高風險等級：${mx?mx+'（'+METHOD[mx]+'）':'—'}　　→ 本區依最高等級進行管理`,s:XS.label}].concat(Array(nc-1).fill({v:'',s:XS.label})));
+    heights[r]=24; merges.push(`A${r}:${last}${r}`);
+    l.forEach((d,i)=>{ n++; const alt=i%2===1;
+      const vals=[n,d.area,d.zh,d.en,d.cas,d.state,d.group,d.disp,d.qty,d.level||'',METHOD[d.level]||'',d.forms.replace(/ ●/g,'\n●'),d.measures];
+      const cells=vals.map((v,j)=>{ if(j===9 && XS['r'+v]) return {v,s:XS['r'+v]}; return {v:v??'',s:center.includes(j)?(alt?XS.ctrAlt:XS.ctr):(alt?XS.bodyAlt:XS.body)}; });
+      rows.push(cells); heights[rows.length]=rowHeight(cells,cols,22); });
+  });
+  return {name:'分級管理清單',cols,rows,heights,landscape:true,merges,freeze:5,filter:null,printTitleRow:5};
+}
+// 閱讀說明：給完全不熟 CCB 的人
+function guideSheet(info){
+  const cols=[16,22,58,40], last='D';
+  const rows=[], heights={}, merges=[];
+  const add=(cells,h,merge)=>{rows.push(cells); if(h) heights[rows.length]=h; if(merge) merges.push(`A${rows.length}:${last}${rows.length}`);};
+  const sec=(title)=>{ add([{v:''}],10); add([{v:title,s:XS.head},{v:'',s:XS.head},{v:'',s:XS.head},{v:'',s:XS.head}],26,true); };
+  const hdr=(a,b,c,d)=>add([a,b,c,d].map(v=>({v,s:XS.label})),22);
+  const row=(a,b,c,d,sa)=>{const cells=[{v:a,s:sa||XS.ctr},{v:b,s:XS.ctr},{v:c,s:XS.body},{v:d,s:XS.body}]; add(cells,rowHeight(cells,cols,22));};
+  add([{v:'閱讀說明：如何看懂這份報告',s:XS.title}],30,true);
+  add([{v:info,s:XS.sub}],20,true);
+  add([{v:'本報告依職安署「化學品分級管理（CCB）」方法，評估每種化學品對作業人員健康的風險高低，並建議對應的管理方式。',s:XS.sub}],20,true);
+
+  sec('一、顏色代表什麼（風險等級）');
+  hdr('顏色／等級','管理方法','代表意思','建議怎麼做');
+  row('1','整體換氣','風險低。化學品危害性較低，或用量少、不容易散到空氣中。','保持作業場所通風（開窗、換氣扇），維持現況並持續觀察。',XS.r1);
+  row('2','工程控制','風險中等。需要從源頭減少化學品散到空氣中。','在發散源設置局部排氣（抽風罩等），參考 200 系列控制表單。',XS.r2);
+  row('3','隔離','風險中高。人員不宜直接接觸或吸入。','將化學品放在密閉設備或系統中操作，參考 300 系列控制表單。',XS.r3);
+  row('4','特殊規定','風險高。需特別管控，應優先改善。','先確認是否已做到密閉隔離，並請專家評估控制設施，搭配行政管理措施，參考 400 系列控制表單。',XS.r4);
+
+  sec('二、表格其他顏色');
+  hdr('顏色','位置','代表意思','');
+  row('灰藍色底','欄位標題','表示這一列是欄位名稱。','',XS.head);
+  row('淺藍灰底','區域標題列','每個執行區域的開頭，寫出該區化學品數量與最高風險等級。','同一區域使用多種化學品時，以最高等級作為該區的管理依據。',XS.label);
+  row('白色／淺灰交錯','化學品資料','只是為了方便閱讀，一列白、一列灰，沒有其他意思。','');
+
+  sec('三、欄位說明');
+  hdr('欄位','可能的值','代表意思','');
+  row('危害群組','A、B、C、D、E','化學品本身「吸入」對健康的危害程度。A 最低，E 最高（E 通常為致癌、致突變或呼吸道過敏物質）。','資料來源：職安署 CCB 網站內建危害群組。');
+  row('危害群組','S','表示這種化學品接觸到皮膚或眼睛也會造成傷害。','有 S 時，要注意手套、護目鏡等防護（見 SK100）。');
+  row('物理狀態','固體／液體／氣體','化學品在使用時的型態。','');
+  row('散布狀況','低／中／高','化學品容易散到空氣中的程度。固體看粉塵多寡，液體看沸點（沸點越低越容易揮發）。','液體：沸點 >150℃ 為低、50～150℃ 為中、<50℃ 為高；氣體一律視為高。');
+  row('使用量','小／中／大','每一批次（或連續製程每天）的使用量。','小：<1 公斤或 1 公升；中：1～1000；大：>1000；氣體一律視為大量。');
+  row('風險等級','1～4','由危害群組、散布狀況、使用量三項綜合判定，數字越大風險越高。','');
+  row('風險減緩/控制措施','（自行填寫）','事業單位實際採取或預計採取的改善措施。','');
+
+  sec('四、暴露控制表單代碼說明');
+  hdr('代碼','類別','內容','');
+  row('100 系列','吸入危害','管理方法 1（整體換氣）適用的控制方法。','完整內容見職安署「化學品分級管理運用手冊」附件。');
+  row('200 系列','吸入危害','管理方法 2（工程控制，如局部排氣）適用的控制方法。','');
+  row('300 系列','吸入危害','管理方法 3（隔離、密閉操作）適用的控制方法。','');
+  row('400 系列','吸入危害','管理方法 4（特殊規定）一般原則，建議諮詢專家。','');
+  row('SK100','皮膚接觸','如何減少皮膚與危害性化學品的接觸。','危害群組有 S 時出現。');
+  row('R100','皮膚接觸','呼吸防護具的選用。','危害群組有 S 時出現。');
+  row('S100','安全','上鎖／掛牌系統的主要功能。','每種化學品都會列出。');
+  row('E100','環境','控制散布到空氣中的程度。','每種化學品都會列出。');
+  row('E200','環境','控制排放到水中的程度。','每種化學品都會列出。');
+  row('E300','環境','廢棄物的安全廢棄處置。','每種化學品都會列出。');
+
+  sec('五、注意事項');
+  const notes=['本報告為 CCB 半定量評估結果，僅供參考，使用者應自行負責因使用本結果可能造成的所有後果。',
+    '具有容許暴露標準或依法應實施作業環境監測的化學品，CCB 結果不能取代作業環境監測，請依相關法規辦理（適用條件請確認最新法規）。',
+    '製程、使用量或化學品有變更時，應重新評估；建議至少每 3 年定期重新評估一次。',
+    SRC_NOTE];
+  notes.forEach((s,i)=>{const cells=[{v:`${i+1}. ${s}`,s:XS.body},{v:'',s:XS.body},{v:'',s:XS.body},{v:'',s:XS.body}]; rows.push(cells); heights[rows.length]=rowHeight([{v:s}],[130],22); merges.push(`A${rows.length}:${last}${rows.length}`);});
+  return {name:'閱讀說明',cols,rows,heights,landscape:false,merges,freeze:0,filter:null,printTitleRow:null};
+}
+
 /* ===================== 輸出：Word (.docx) ===================== */
 const xesc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const FONT='微軟正黑體';
@@ -759,11 +843,8 @@ $('dlZip').onclick=async()=>{
 $('dlXlsx').onclick=async()=>{
   const recs=draft.rows.map(recordData), h=draft.header;
   const info=`事業單位名稱：${h.company||'—'}　　執行日期：${fmtDate(h.date)||'—'}　　製表者：${h.maker||'—'}　　製表日期：${fmtDate(h.makedate)||'—'}`;
-  const s1=makeSheet({name:'分級管理清單',title:'危害性化學品分級管理清單',info,note:SRC_NOTE,landscape:true,
-    cols:[6,13,16,30,12,9,9,9,8,9,10,34,26],
-    head:['序號','執行區域','中文名稱','英文名稱','CAS No.','物理狀態','危害群組','散布狀況','使用量','風險等級','管理方法','暴露控制表單','風險減緩/控制措施'],
-    data:recs.map((d,i)=>[i+1,d.area,d.zh,d.en,d.cas,d.state,d.group,d.disp,d.qty,d.level||'',METHOD[d.level]||'',d.forms.replace(/ ●/g,'\n●'),d.measures]),
-    center:[0,4,5,6,7,8,10], riskCol:9});
+  const s1=groupedSheet(recs,info);
+  const s0=guideSheet(info);
   const areas={}; recs.forEach(d=>{const a=d.area||'(未填)'; (areas[a]=areas[a]||[]).push(d);});
   const ar=Object.entries(areas).map(([a,l])=>{const mx=Math.max(...l.map(d=>d.level||0)); return [a,l.length,mx||'',METHOD[mx]||'',l.filter(d=>d.level===mx).map(d=>d.zh.split('、')[0]).join('、'),l.map(d=>d.zh.split('、')[0]).join('、')];}).sort((x,y)=>(y[2]||0)-(x[2]||0));
   const s2=makeSheet({name:'區域最高風險',title:'各執行區域最高風險等級',info,note:'同一作業場所使用二種以上化學品時，以最高風險等級作為後續管理依據',
@@ -773,7 +854,7 @@ $('dlXlsx').onclick=async()=>{
   const s3=makeSheet({name:'風險等級統計',title:'風險等級統計',info,note:'管理方法說明依「化學品分級管理運用手冊」',
     cols:[12,12,12,70], head:['風險等級','管理方法','化學品數','管理方法原則'], data:[1,2,3,4].map(l=>[l,METHOD[l],cnt[l-1],desc[l]]).concat([['合計','',recs.length,'']]), center:[1,2], riskCol:0});
   s3.filter=null;
-  saveFile(baseName().replace('執行紀錄','彙整表')+'.xlsx', await buildXlsx([s1,s2,s3]));
+  saveFile(baseName().replace('執行紀錄','彙整表')+'.xlsx', await buildXlsx([s0,s1,s2,s3]));
 };
 
 async function saveFile(name, blob){
