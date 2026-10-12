@@ -1260,9 +1260,7 @@ async function openManual(url,page){
   let v=$('mview');
   if(!v){ v=document.createElement('div'); v.id='mview'; v.innerHTML=`<div class="mbar"><button class="btn primary" id="mBack">← 返回程式</button><div class="mtitle">化學品分級管理運用手冊<span id="mPage"></span></div><a class="btn sm ghost" id="mDl" target="_blank" rel="noopener">下載 PDF</a></div><div class="mbody" id="mBody"><div class="mload">手冊載入中…</div></div>`; document.body.appendChild(v);
     $('mBack').onclick=()=>closeManual(false);
-    $('mDl').addEventListener('click',async ev=>{ if(!window.claude) return; ev.preventDefault();  // claude.ai 內嵌檢視不能另開分頁，改用下載
-      try{ toast('準備手冊檔案中…'); const r=await fetch($('mDl').getAttribute('href')); if(!r.ok) throw new Error('HTTP '+r.status); await saveFile('化學品分級管理運用手冊.pdf', await r.blob()); }
-      catch(err){ toast('手冊下載失敗（'+err.message+'）'); } }); }
+    $('mDl').addEventListener('click',ev=>{ ev.preventDefault(); saveManualPdf($('mDl').getAttribute('href')); }); }
   $('mDl').href=url; v.hidden=false; document.body.style.overflow='hidden';
   try{ history.pushState({mview:1},''); }catch(e){}
   const body=$('mBody');
@@ -1284,6 +1282,18 @@ async function openManual(url,page){
     body.innerHTML=`<div class="mload">無法在程式內顯示手冊（${esc(err.message)}）。<br><a class="mlink-plain" href="${url}" target="_blank" rel="noopener">改為下載 PDF</a></div>`;
   }
 }
+// 存下手冊 PDF：不另開頁面（避免手機桌面 App 開了 PDF 回不來）
+async function saveManualPdf(url){
+  try{
+    toast('準備手冊檔案中…');
+    const r=await fetch(url); if(!r.ok) throw new Error('HTTP '+r.status);
+    const blob=await r.blob(), name='化學品分級管理運用手冊.pdf';
+    if(window.claude){ await saveFile(name, blob); return; }
+    const file=new File([blob],name,{type:'application/pdf'});
+    if(navigator.canShare && navigator.canShare({files:[file]})){ try{ await navigator.share({files:[file],title:name}); }catch(e){} return; }
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},2000);
+  }catch(err){ toast('手冊下載失敗（'+err.message+'）'); }
+}
 async function renderPdfPage(div){
   if(div.dataset.done) return; div.dataset.done='1';
   try{ const pg=await _pdfDoc.getPage(+div.dataset.n); const w=div.clientWidth||600, dpr=Math.min(2,window.devicePixelRatio||1);
@@ -1292,7 +1302,7 @@ async function renderPdfPage(div){
 }
 document.addEventListener('click',async e=>{
   const pl=e.target.closest('a.mlink-plain');
-  if(pl && window.claude){ e.preventDefault(); try{ toast('準備手冊檔案中…'); const r=await fetch(pl.getAttribute('href')); if(!r.ok) throw new Error('HTTP '+r.status); await saveFile('化學品分級管理運用手冊.pdf', await r.blob()); }catch(err){ toast('手冊下載失敗（'+err.message+'）'); } return; }
+  if(pl){ e.preventDefault(); saveManualPdf(pl.getAttribute('href')); return; }
   const a=e.target.closest('a.mlink'); if(!a) return;
   e.preventDefault();
   const href=a.getAttribute('href'), m=href.match(/#page=(\d+)/);
