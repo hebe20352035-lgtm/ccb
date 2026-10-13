@@ -127,6 +127,10 @@ table.rows:not(.cards) .caslbl input{padding:4px 8px;font-size:13px;height:auto}
 .mlink{color:#1f4e78;font-weight:600;word-break:break-all}
 .vl{padding:1px 8px;border-radius:9px;color:#fff}.vl.v高{background:#c0392b}.vl.v中{background:#c2577e}.vl.v低{background:#2b88c4}
 input:focus-visible,select:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+.utable{width:100%;border-collapse:collapse;font-size:13.5px;min-width:680px}
+.utable th,.utable td{border-bottom:1px solid var(--line);padding:8px 10px;text-align:left;white-space:nowrap}
+.utable th{background:var(--surface-2);font-weight:700;position:sticky;top:0}
+.utable td.mod{color:var(--muted)}
 .btn{appearance:none;font:inherit;font-size:13.5px;font-weight:500;border:1px solid var(--line);background:var(--cell);color:var(--fg);border-radius:6px;padding:7px 13px;cursor:pointer;white-space:nowrap}
 .btn:hover{background:var(--surface-2)}
 .btn.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
@@ -253,6 +257,7 @@ td .sub.bad{color:var(--err-fg)}
   <nav class="tabs" role="tablist">
     <button id="tab-eval" role="tab" aria-selected="true" data-tab="eval">批次評估</button>
     <button id="tab-lib" role="tab" aria-selected="false" data-tab="lib" hidden>化學品庫 <span id="libCount" class="mono"></span></button>
+    <button id="tab-users" role="tab" aria-selected="false" data-tab="users" hidden>使用者名單 <span id="usersCount" class="mono"></span></button>
   </nav>
 
   <!-- ============ 批次評估 ============ -->
@@ -313,6 +318,22 @@ td .sub.bad{color:var(--err-fg)}
   </section>
 
   <!-- ============ 化學品庫 ============ -->
+  <section id="view-users" hidden style="flex-direction:column;gap:18px">
+    <div class="panel">
+      <div class="panel-head" style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between">
+        <h2>客戶版使用者名單</h2>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <input id="usersQ" placeholder="搜尋公司、姓名、職務" style="height:36px;width:220px;max-width:100%;flex:0 1 auto;border:1px solid var(--line);border-radius:6px;padding:0 10px;font:inherit">
+          <label style="font-size:13px;display:inline-flex;align-items:center;gap:4px;white-space:nowrap;flex:0 0 auto"><input type="checkbox" id="usersLatest" checked style="width:16px;height:16px;margin:0">每人只顯示最新資料</label>
+          <button class="btn" id="usersReload">重新整理</button>
+        </div>
+      </div>
+      <div class="hint" id="usersMsg">載入中…</div>
+      <div style="overflow:auto">
+        <table class="utable" id="usersTable"><thead><tr><th>登記時間</th><th>公司名稱</th><th>姓名</th><th>職務</th><th>Email或電話</th><th>類型</th><th>裝置</th></tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
   <section id="view-lib" hidden style="flex-direction:column;gap:18px">
     <div class="panel">
       <div class="panel-head">
@@ -1004,8 +1025,8 @@ function contactHTML(compact){
 /* ===================== 分頁 ===================== */
 function switchTab(t){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
-  $('view-eval').hidden=t!=='eval'; $('view-lib').hidden=t!=='lib';
-  $('view-eval').style.display=t==='eval'?'flex':''; $('view-lib').style.display=t==='lib'?'flex':'';
+  ['eval','lib','users'].forEach(k=>{ const v=$('view-'+k); v.hidden=t!==k; v.style.display=t===k?'flex':''; });
+  if(t==='users' && !usersLoaded) loadUsers();
 }
 document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>switchTab(b.dataset.tab));
 function refreshAll(){ invalidateLib(); renderLib(); renderRows(); }
@@ -1231,9 +1252,8 @@ async function buildDocx(list){
   return z.generateAsync({type:'uint8array',mimeType:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'});
 }
 const baseName=()=>{ const h=draft.header; return (h.company||'CCB').replace(/[\\/:*?"<>|]/g,'')+'_CCB執行紀錄_'+(h.date||today()).replace(/-/g,''); };
-$('dlDocx').onclick=async()=>{ logEvent('匯出Word',draft.rows.length); const bytes=await buildDocx(draft.rows.map(recordData)); saveFile(baseName()+'.docx', new Blob([bytes])); };
+$('dlDocx').onclick=async()=>{ const bytes=await buildDocx(draft.rows.map(recordData)); saveFile(baseName()+'.docx', new Blob([bytes])); };
 $('dlZip').onclick=async()=>{
-  logEvent('匯出ZIP',draft.rows.length);
   const z=new JSZip();
   for(const [i,r] of draft.rows.entries()){ const d=recordData(r);
     const name=`${String(i+1).padStart(2,'0')}_${(d.zh.split('、')[0]||'化學品')}_${d.area||'區域'}`.replace(/[\\/:*?"<>|]/g,'');
@@ -1242,7 +1262,6 @@ $('dlZip').onclick=async()=>{
 };
 /* ===================== 輸出：彙整表 (.xlsx) ===================== */
 $('dlXlsx').onclick=async()=>{
-  logEvent('匯出Excel',draft.rows.length);
   const recs=draft.rows.map(recordData), h=draft.header;
   const info=`事業單位名稱：${h.company||'—'}　　執行日期：${fmtDate(h.date)||'—'}　　製表者：${h.maker||'—'}　　製表日期：${fmtDate(h.makedate)||'—'}`;
   const s1=groupedSheet(recs,info);
@@ -1343,7 +1362,7 @@ $('contactBox').innerHTML=contactHTML(false);
 // 部署 Google Apps Script 後，把「網頁應用程式網址」貼在這裡
 const LOG_URL='https://script.google.com/macros/s/AKfycbz9oLR7ii7ASvUxC2wp7e6aJiwwO8sW8RgGi09wgBYqFrEtBSfZ92Dg0_9owN9uJ-AvSw/exec';
 const LS_USER='ccb-user-v1', LS_LOGQ='ccb-logq-v1', NEED_REG=/*EDITION*/true;
-let regUser=lsGet(LS_USER), openLogged=false;
+let regUser=lsGet(LS_USER);
 const regIds=['regCompany','regName','regTitle','regContact'], regKeys=['company','name','title','contact'];
 function regValid(){ return ['regCompany','regName','regTitle'].every(id=>$(id).value.trim()) && $('regAgree').checked; }
 function regRender(edit){
@@ -1355,10 +1374,10 @@ function regRender(edit){
     const b=document.createElement('button'); b.type='button'; b.textContent='修改'; b.onclick=()=>regRender(true); $('regMe').append(b); $('coverGo').disabled=false; }
 }
 if(NEED_REG){ [...regIds,'regAgree'].forEach(id=>$(id).addEventListener('input',()=>{ $('coverGo').disabled=!regValid(); })); regRender(false); }
-function logEvent(action,n){
+function logEvent(action){
   if(!NEED_REG||!regUser||!/^https:/.test(LOG_URL)) return;
   const q=lsGet(LS_LOGQ)||[];
-  q.push({uid:regUser.uid,company:regUser.company,name:regUser.name,title:regUser.title,contact:regUser.contact||'',action,n:n||0,
+  q.push({uid:regUser.uid,company:regUser.company,name:regUser.name,title:regUser.title,contact:regUser.contact||'',action,
     device:/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)?'手機/平板':'電腦',ct:new Date().toISOString()});
   lsSet(LS_LOGQ,q.slice(-200)); flushLog();
 }
@@ -1372,15 +1391,43 @@ async function flushLog(){
   flushing=false;
   if(ok && (lsGet(LS_LOGQ)||[]).length) flushLog();
 }
+/* ===================== 使用者名單（僅自用版） ===================== */
+const VIEW_KEY='', SHOW_USERS=/*SELF*/false && /^https:/.test(LOG_URL) && VIEW_KEY.length>8;
+let usersLoaded=false, usersRows=[];
+function renderUsers(){
+  const q=$('usersQ').value.trim().toLowerCase();
+  let list=usersRows.slice().sort((a,b)=>String(b.time).localeCompare(String(a.time)));
+  if($('usersLatest').checked){ const seen=new Set(); list=list.filter(r=>{ const k=r.uid||(r.company+r.name); if(seen.has(k)) return false; seen.add(k); return true; }); }
+  if(q) list=list.filter(r=>[r.company,r.name,r.title,r.contact].join(' ').toLowerCase().includes(q));
+  const tb=$('usersTable').tBodies[0]; tb.innerHTML='';
+  list.forEach(r=>{ const tr=tb.insertRow(); const d=new Date(r.time);
+    [isNaN(d)?r.time:d.toLocaleString('zh-TW',{hour12:false,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}),r.company,r.name,r.title,r.contact,r.type,r.device]
+      .forEach((v,i)=>{ const c=tr.insertCell(); c.textContent=v||''; if(i===5&&v==='修改資料') c.className='mod'; }); });
+  const people=new Set(usersRows.map(r=>r.uid||(r.company+r.name))).size, comps=new Set(usersRows.map(r=>r.company)).size;
+  $('usersCount').textContent=people||'';
+  $('usersMsg').textContent=usersRows.length?`共 ${people} 位使用者、${comps} 家公司（顯示 ${list.length} 筆）`:'目前還沒有人登記';
+}
+async function loadUsers(){
+  $('usersMsg').textContent='載入中…'; $('usersReload').disabled=true;
+  try{
+    const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),20000);
+    const res=await fetch(LOG_URL+'?key='+encodeURIComponent(VIEW_KEY),{signal:ctl.signal}); clearTimeout(to);
+    const j=JSON.parse(await res.text());
+    if(!j.ok) throw new Error(j.error||'讀取失敗');
+    usersRows=j.rows||[]; usersLoaded=true; renderUsers();
+  }catch(e){ $('usersMsg').textContent='讀取失敗：'+(e.name==='AbortError'?'連線逾時':e.message)+'。請確認網路，或 Apps Script 已更新為新版本。'; }
+  $('usersReload').disabled=false;
+}
+if(SHOW_USERS){ $('tab-users').hidden=false; $('usersReload').onclick=loadUsers; $('usersQ').oninput=renderUsers; $('usersLatest').onchange=renderUsers; }
 $('coverGo').onclick=()=>{
   if(NEED_REG && !$('regForm').hidden){
     if(!regValid()){ toast('請填寫公司名稱、姓名、職務並勾選同意'); return; }
     const v={}; regIds.forEach((id,i)=>v[regKeys[i]]=$(id).value.trim());
     const changed=!regUser||regKeys.some(k=>(regUser[k]||'')!==v[k]);
+    const first=!regUser;
     regUser={uid:regUser?.uid||(Date.now().toString(36)+Math.random().toString(36).slice(2,8)),...v}; lsSet(LS_USER,regUser);
-    regRender(false); if(changed) logEvent('登記');
+    regRender(false); if(changed) logEvent(first?'首次登記':'修改資料');
   }
-  if(NEED_REG && !openLogged){ openLogged=true; logEvent('開啟'); }
   const c=$('cover'); c.classList.add('leaving'); setTimeout(()=>{c.hidden=true;c.classList.remove('leaving');},250); };
 $('brandLogo').onclick=()=>{ $('cover').hidden=false; regRender(false); $('coverGo').focus(); };
 if(NEED_REG) flushLog();
