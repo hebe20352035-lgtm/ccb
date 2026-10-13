@@ -1018,10 +1018,20 @@ const CONTACT={name:'安平技術顧問有限公司', tel:'0989289965', mail:'ro
 function contactHTML(compact){
   return `<div class="contact${compact?' compact':''}"><div class="ct-name">${CONTACT.name}</div><div class="ct-items">
     <a href="tel:${CONTACT.tel}">電話 ${CONTACT.tel}</a>
-    <a href="mailto:${CONTACT.mail}">Email ${CONTACT.mail}</a>
+    <a href="mailto:${CONTACT.mail}?subject=${encodeURIComponent('CCB半定量風險評估 洽詢')}" class="ct-mail">Email ${CONTACT.mail}</a>
     <a href="https://line.me/ti/p/~${CONTACT.line}" target="_blank" rel="noopener">LINE ID：${CONTACT.line}</a></div></div>`;
 }
 
+// Email：手機用 mailto 開郵件 App；電腦多半沒設定郵件程式，改開 Gmail 網頁版撰寫信件並複製 Email
+document.addEventListener('click',e=>{
+  const a=e.target.closest('a.ct-mail'); if(!a) return;
+  if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return;
+  e.preventDefault();
+  try{ navigator.clipboard?.writeText(CONTACT.mail).catch(()=>{}); }catch(_){}
+  const u='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(CONTACT.mail)+'&su='+encodeURIComponent('CCB半定量風險評估 洽詢');
+  window.open(u,'_blank','noopener');
+  toast('已開啟 Gmail 撰寫信件；Email 也已複製：'+CONTACT.mail+'（使用其他郵件程式可直接貼上）');
+});
 /* ===================== 分頁 ===================== */
 function switchTab(t){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
@@ -1392,7 +1402,7 @@ async function flushLog(){
   if(ok && (lsGet(LS_LOGQ)||[]).length) flushLog();
 }
 /* ===================== 使用者名單（僅自用版） ===================== */
-const VIEW_KEY='', SHOW_USERS=/*SELF*/false && /^https:/.test(LOG_URL) && VIEW_KEY.length>8;
+let VIEW_KEY=''; const CAN_USERS=!/*EDITION*/true && /^https:/.test(LOG_URL);
 let usersLoaded=false, usersRows=[];
 function renderUsers(){
   const q=$('usersQ').value.trim().toLowerCase();
@@ -1408,17 +1418,25 @@ function renderUsers(){
   $('usersMsg').textContent=usersRows.length?`共 ${people} 位使用者、${comps} 家公司（顯示 ${list.length} 筆）`:'目前還沒有人登記';
 }
 async function loadUsers(){
+  if(window.claude){ // 網頁版無法直接連 Google：改成開新分頁看名單
+    usersLoaded=true; $('usersMsg').innerHTML=''; $('usersTable').hidden=true;
+    $('usersQ').hidden=true; $('usersLatest').parentElement.hidden=true; $('usersReload').hidden=true;
+    const link=document.createElement('a'); link.className='btn primary'; link.target='_blank'; link.rel='noopener';
+    link.href=LOG_URL+'?key='+encodeURIComponent(VIEW_KEY); link.textContent='開啟使用者名單';
+    const tip=document.createElement('div'); tip.style.marginTop='8px'; tip.textContent='名單會在新分頁開啟：有新登記會自動更新（每 60 秒），也可以直接匯出 Excel。';
+    $('usersMsg').append(link,tip); return;
+  }
   $('usersMsg').textContent='載入中…'; $('usersReload').disabled=true;
   try{
     const ctl=new AbortController(); const to=setTimeout(()=>ctl.abort(),20000);
-    const res=await fetch(LOG_URL+'?key='+encodeURIComponent(VIEW_KEY),{signal:ctl.signal}); clearTimeout(to);
+    const res=await fetch(LOG_URL+'?format=json&key='+encodeURIComponent(VIEW_KEY),{signal:ctl.signal}); clearTimeout(to);
     const j=JSON.parse(await res.text());
     if(!j.ok) throw new Error(j.error||'讀取失敗');
     usersRows=j.rows||[]; usersLoaded=true; renderUsers();
-  }catch(e){ $('usersMsg').textContent='讀取失敗：'+(e.name==='AbortError'?'連線逾時':e.message)+'。請確認網路，或 Apps Script 已更新為新版本。'; }
+  }catch(e){ $('usersMsg').textContent='讀取失敗：'+(e.name==='AbortError'?'連線逾時':e.message)+(window.claude?'。網頁版可能無法連到 Google，請改用自用版，或直接開 Google 試算表「CCB使用統計」查看。':'。請確認網路，或 Apps Script 已更新為新版本。'); }
   $('usersReload').disabled=false;
 }
-if(SHOW_USERS){ $('tab-users').hidden=false; $('usersReload').onclick=loadUsers; $('usersQ').oninput=renderUsers; $('usersLatest').onchange=renderUsers; }
+function enableUsers(){ $('tab-users').hidden=false; $('usersReload').onclick=loadUsers; $('usersQ').oninput=renderUsers; $('usersLatest').onchange=renderUsers; }
 $('coverGo').onclick=()=>{
   if(NEED_REG && !$('regForm').hidden){
     if(!regValid()){ toast('請填寫公司名稱、姓名、職務並勾選同意'); return; }
@@ -1438,6 +1456,17 @@ refreshAll();
 const use=n=>window.claude?.use? window.claude.use(n).catch(()=>null) : Promise.resolve(null);
 // 網頁版與自用版：所有人都看得到化學品庫（寫入共用庫仍依存取規則，沒有權限時改存本機）
 if(!/*EDITION*/true){ applyOwner(true); }
+// 使用者名單：自用版直接顯示；網頁版只有擁有者（你）看得到
+// 網頁版的密碼不放在程式裡，而是存在只有擁有者讀得到的資料庫位置
+if(CAN_USERS){
+  if(VIEW_KEY.length>8) enableUsers();
+  else if(window.claude) use('user').then(async u=>{
+    if(!u || !(await u.isOwner())) return;
+    const d=await use('db'); if(!d) return;
+    const s=await d.collection('ownerkey').doc('k').get();
+    const k=s.exists? s.data()?.key : ''; if(k){ VIEW_KEY=k; enableUsers(); }
+  }).catch(()=>{});
+}
 use('downloads').then(d=>{ downloads=d; if(!d && window.claude) $('dlNote').textContent='此檢視無法下載檔案，請在 claude.ai 開啟此頁後再下載。'; });
 use('db').then(d=>{
   if(!d){ setStatus(false,'化學品庫：僅存在本機瀏覽器'); return; }
