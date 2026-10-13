@@ -1038,7 +1038,8 @@ function copyText(s){ try{ if(navigator.clipboard){ navigator.clipboard.writeTex
 document.addEventListener('click',e=>{
   const a=e.target.closest('a.ct-mail,a.ct-tel'); if(!a) return;
   if(a.classList.contains('ct-mail')){ if(IS_MOBILE && !window.claude) return; copyText(CONTACT.mail); toast('已開啟 Gmail 撰寫信件；Email 也已複製：'+CONTACT.mail); }
-  else{ if(!window.claude && IS_MOBILE) return; copyText(CONTACT.tel); toast('電話號碼已複製：'+CONTACT.tel+(IS_MOBILE?'（若沒有跳出撥號，請到電話 App 貼上）':'')); }
+  else{ if(!window.claude && IS_MOBILE) return; if(!IS_MOBILE) e.preventDefault(); // 電腦沒有撥號功能：不開 tel:，只複製號碼
+    copyText(CONTACT.tel); toast('電話號碼已複製：'+CONTACT.tel+(IS_MOBILE?'（若沒有跳出撥號，請到電話 App 貼上）':'')); }
 });
 
 /* ===================== 分頁 ===================== */
