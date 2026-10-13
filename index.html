@@ -197,6 +197,9 @@ td .sub.bad{color:var(--err-fg)}
 .reg .agree{flex-direction:row;align-items:flex-start;gap:8px;font-size:12px;line-height:1.6;color:#333}
 .reg .agree input{margin-top:3px;width:18px;height:18px;flex:0 0 auto}
 .cover.needreg img{width:min(170px,40vw)}
+.reg input.miss{border-color:var(--err-fg);background:#fff5f4}
+.reg .agree.miss{color:var(--err-fg)}
+.reg .err{color:var(--err-fg);font-size:13px;font-weight:500}
 .regme{font-size:13px;color:#333;text-align:center}
 .regme button{appearance:none;border:0;background:none;color:var(--accent);font:inherit;text-decoration:underline;cursor:pointer;padding:0 4px}
 .cover .go:focus-visible{outline:2px solid #5a7584;outline-offset:3px}
@@ -240,7 +243,8 @@ td .sub.bad{color:var(--err-fg)}
     <label><span>姓名 <b>*</b></span><input type="text" id="regName" maxlength="30" autocomplete="name"></label>
     <label><span>職務 <b>*</b></span><input type="text" id="regTitle" maxlength="30" autocomplete="organization-title" placeholder="例：環安工程師"></label>
     <label><span>Email 或電話（選填）</span><input type="text" id="regContact" maxlength="60" autocomplete="email"></label>
-    <label class="agree"><input type="checkbox" id="regAgree"><span>本工具僅蒐集上列資料，以及使用時間、使用功能與化學品筆數，用於使用統計及後續服務聯繫，不提供予第三方；化學品名稱與評估內容不會上傳。</span></label>
+    <div class="err" id="regErr" hidden></div>
+    <label class="agree"><input type="checkbox" id="regAgree"><span>本工具僅蒐集上列資料及登記時間，用於使用統計及後續服務聯繫，不提供予第三方；化學品名稱與評估內容不會上傳。</span></label>
   </form>
   <div class="regme" id="regMe" hidden></div>
   <button class="go" id="coverGo">開始使用</button>
@@ -1015,23 +1019,28 @@ $('fillMeasures').onclick=()=>{ let n=0; draft.rows.forEach(r=>{ if(!String(r.me
 
 /* ===================== 4. 聯絡資訊 ===================== */
 const CONTACT={name:'安平技術顧問有限公司', tel:'0989289965', mail:'rock90411@gmail.com', line:'huangrock'};
+const IS_MOBILE=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+const GMAIL_URL='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(CONTACT.mail)+'&su='+encodeURIComponent('CCB半定量風險評估 洽詢');
 function contactHTML(compact){
+  // 網頁版（claude.ai 內）會擋 tel:／mailto:；電腦多半沒設定郵件程式 → 改用 Gmail 網頁撰寫（新分頁）
+  const inApp=!!window.claude;
+  const mailHref=(IS_MOBILE && !inApp)? `mailto:${CONTACT.mail}?subject=${encodeURIComponent('CCB半定量風險評估 洽詢')}` : GMAIL_URL;
+  const mailTgt=(IS_MOBILE && !inApp)? '' : ' target="_blank" rel="noopener"';
+  const telTgt=inApp? ' target="_blank" rel="noopener"' : '';
   return `<div class="contact${compact?' compact':''}"><div class="ct-name">${CONTACT.name}</div><div class="ct-items">
-    <a href="tel:${CONTACT.tel}">電話 ${CONTACT.tel}</a>
-    <a href="mailto:${CONTACT.mail}?subject=${encodeURIComponent('CCB半定量風險評估 洽詢')}" class="ct-mail">Email ${CONTACT.mail}</a>
+    <a href="tel:${CONTACT.tel}" class="ct-tel"${telTgt}>電話 ${CONTACT.tel}</a>
+    <a href="${mailHref}" class="ct-mail"${mailTgt}>Email ${CONTACT.mail}</a>
     <a href="https://line.me/ti/p/~${CONTACT.line}" target="_blank" rel="noopener">LINE ID：${CONTACT.line}</a></div></div>`;
 }
-
-// Email：手機用 mailto 開郵件 App；電腦多半沒設定郵件程式，改開 Gmail 網頁版撰寫信件並複製 Email
+// 點電話／Email 時同時複製號碼或信箱，萬一裝置開不了也能直接貼上
+function copyFallback(s){ try{ const x=document.createElement('textarea'); x.value=s; x.style.position='fixed'; x.style.opacity='0'; document.body.appendChild(x); x.select(); document.execCommand('copy'); x.remove(); }catch(_){} }
+function copyText(s){ try{ if(navigator.clipboard){ navigator.clipboard.writeText(s).catch(()=>copyFallback(s)); return; } }catch(_){} copyFallback(s); }
 document.addEventListener('click',e=>{
-  const a=e.target.closest('a.ct-mail'); if(!a) return;
-  if(/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)) return;
-  e.preventDefault();
-  try{ navigator.clipboard?.writeText(CONTACT.mail).catch(()=>{}); }catch(_){}
-  const u='https://mail.google.com/mail/?view=cm&fs=1&to='+encodeURIComponent(CONTACT.mail)+'&su='+encodeURIComponent('CCB半定量風險評估 洽詢');
-  window.open(u,'_blank','noopener');
-  toast('已開啟 Gmail 撰寫信件；Email 也已複製：'+CONTACT.mail+'（使用其他郵件程式可直接貼上）');
+  const a=e.target.closest('a.ct-mail,a.ct-tel'); if(!a) return;
+  if(a.classList.contains('ct-mail')){ if(IS_MOBILE && !window.claude) return; copyText(CONTACT.mail); toast('已開啟 Gmail 撰寫信件；Email 也已複製：'+CONTACT.mail); }
+  else{ if(!window.claude && IS_MOBILE) return; copyText(CONTACT.tel); toast('電話號碼已複製：'+CONTACT.tel+(IS_MOBILE?'（若沒有跳出撥號，請到電話 App 貼上）':'')); }
 });
+
 /* ===================== 分頁 ===================== */
 function switchTab(t){
   document.querySelectorAll('.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
@@ -1379,11 +1388,11 @@ function regRender(edit){
   if(!NEED_REG) return;
   const show=edit||!regUser;
   $('regForm').hidden=!show; $('regMe').hidden=show; $('cover').classList.toggle('needreg',show);
-  if(show){ regIds.forEach((id,i)=>{ $(id).value=regUser?.[regKeys[i]]||''; }); $('regAgree').checked=!!regUser; $('coverGo').disabled=!regValid(); }
+  if(show){ regIds.forEach((id,i)=>{ $(id).value=regUser?.[regKeys[i]]||''; }); $('regAgree').checked=!!regUser; }
   else{ $('regMe').innerHTML=''; $('regMe').append(`使用者：${regUser.name}（${regUser.company}・${regUser.title}）`);
-    const b=document.createElement('button'); b.type='button'; b.textContent='修改'; b.onclick=()=>regRender(true); $('regMe').append(b); $('coverGo').disabled=false; }
+    const b=document.createElement('button'); b.type='button'; b.textContent='修改'; b.onclick=()=>regRender(true); $('regMe').append(b); }
 }
-if(NEED_REG){ [...regIds,'regAgree'].forEach(id=>$(id).addEventListener('input',()=>{ $('coverGo').disabled=!regValid(); })); regRender(false); }
+if(NEED_REG){ [...regIds,'regAgree'].forEach(id=>['input','change'].forEach(ev=>$(id).addEventListener(ev,()=>{ $(id).classList.remove('miss'); $('regAgree').parentElement.classList.remove('miss'); }))); regRender(false); }
 function logEvent(action){
   if(!NEED_REG||!regUser||!/^https:/.test(LOG_URL)) return;
   const q=lsGet(LS_LOGQ)||[];
@@ -1439,7 +1448,12 @@ async function loadUsers(){
 function enableUsers(){ $('tab-users').hidden=false; $('usersReload').onclick=loadUsers; $('usersQ').oninput=renderUsers; $('usersLatest').onchange=renderUsers; }
 $('coverGo').onclick=()=>{
   if(NEED_REG && !$('regForm').hidden){
-    if(!regValid()){ toast('請填寫公司名稱、姓名、職務並勾選同意'); return; }
+    if(!regValid()){
+      const miss=['regCompany','regName','regTitle'].filter(id=>!$(id).value.trim());
+      miss.forEach(id=>$(id).classList.add('miss')); if(!$('regAgree').checked) $('regAgree').parentElement.classList.add('miss');
+      $('regErr').textContent=miss.length?'請填寫標示紅框的欄位':'請勾選同意後再開始使用'; $('regErr').hidden=false;
+      (miss.length?$(miss[0]):$('regAgree')).focus(); return; }
+    $('regErr').hidden=true;
     const v={}; regIds.forEach((id,i)=>v[regKeys[i]]=$(id).value.trim());
     const changed=!regUser||regKeys.some(k=>(regUser[k]||'')!==v[k]);
     const first=!regUser;
